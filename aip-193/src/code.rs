@@ -3,7 +3,7 @@ use strum::{AsRefStr, Display, EnumString};
 
 /// The canonical error codes for gRPC APIs.
 /// 
-/// https://github.com/grpc/grpc/blob/master/doc/statuscodes.md
+/// <https://github.com/grpc/grpc/blob/master/doc/statuscodes.md>
 #[derive(
     Clone,
     Copy,

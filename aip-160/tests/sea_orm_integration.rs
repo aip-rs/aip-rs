@@ -1,7 +1,9 @@
-use aip_160::{parse_filter, ToSeaOrmCondition};
+#![cfg(feature = "sea-orm")]
+
+use aip_160::{ToSeaOrmCondition, parse_filter};
 use sea_orm::{
-    entity::prelude::*, Database, DatabaseConnection, DbBackend, DbErr, QueryOrder, QuerySelect, Set,
-    QueryTrait,
+    Database, DatabaseConnection, DbBackend, DbErr, QueryOrder, QuerySelect, QueryTrait, Set,
+    entity::prelude::*,
 };
 
 // Define test entity
@@ -260,7 +262,11 @@ async fn test_complex_filter() -> Result<(), Box<dyn std::error::Error>> {
     let users = Entity::find().filter(condition).all(&db).await?;
 
     assert_eq!(users.len(), 3); // Bob, David, Frank
-    assert!(users.iter().all(|u| u.active && u.age > 25 && u.score >= 85.0));
+    assert!(
+        users
+            .iter()
+            .all(|u| u.active && u.age > 25 && u.score >= 85.0)
+    );
 
     Ok(())
 }
@@ -277,7 +283,11 @@ async fn test_grouped_expression() -> Result<(), Box<dyn std::error::Error>> {
     let users = Entity::find().filter(condition).all(&db).await?;
 
     assert_eq!(users.len(), 2); // Alice (25) and Bob (30)
-    assert!(users.iter().all(|u| (u.name == "Alice" || u.name == "Bob") && u.age >= 25));
+    assert!(
+        users
+            .iter()
+            .all(|u| (u.name == "Alice" || u.name == "Bob") && u.age >= 25)
+    );
 
     Ok(())
 }
@@ -331,7 +341,7 @@ async fn test_ordering_with_filter() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(users.len(), 4);
     // Check ordering
     assert_eq!(users[0].name, "Alice"); // age 25
-    assert_eq!(users[1].name, "Bob");   // age 30
+    assert_eq!(users[1].name, "Bob"); // age 30
     assert_eq!(users[2].name, "David"); // age 35
     assert_eq!(users[3].name, "Frank"); // age 42
 
@@ -355,7 +365,7 @@ async fn test_pagination_with_filter() -> Result<(), Box<dyn std::error::Error>>
         .await?;
 
     assert_eq!(users.len(), 2);
-    assert_eq!(users[0].name, "Bob");   // id 2
+    assert_eq!(users[0].name, "Bob"); // id 2
     assert_eq!(users[1].name, "David"); // id 4
 
     Ok(())
@@ -385,8 +395,16 @@ fn test_uuid_cast_in_sql() -> Result<(), Box<dyn std::error::Error>> {
     let query = uuid_entity::Entity::find().filter(condition);
     let sql = query.build(DbBackend::Postgres).to_string();
 
-    assert!(sql.contains("CAST"), "SQL should contain CAST for UUID: {}", sql);
-    assert!(sql.contains("uuid"), "SQL should cast to uuid type: {}", sql);
+    assert!(
+        sql.contains("CAST"),
+        "SQL should contain CAST for UUID: {}",
+        sql
+    );
+    assert!(
+        sql.contains("uuid"),
+        "SQL should cast to uuid type: {}",
+        sql
+    );
 
     Ok(())
 }
@@ -400,8 +418,16 @@ fn test_uuid_cast_comparison_operators() -> Result<(), Box<dyn std::error::Error
     let query = uuid_entity::Entity::find().filter(condition);
     let sql = query.build(DbBackend::Postgres).to_string();
 
-    assert!(sql.contains("CAST"), "SQL should contain CAST for UUID comparison: {}", sql);
-    assert!(sql.contains("uuid"), "SQL should cast to uuid type: {}", sql);
+    assert!(
+        sql.contains("CAST"),
+        "SQL should contain CAST for UUID comparison: {}",
+        sql
+    );
+    assert!(
+        sql.contains("uuid"),
+        "SQL should cast to uuid type: {}",
+        sql
+    );
 
     // Test less than
     let filter2 = parse_filter("id < \"550e8400-e29b-41d4-a716-446655440000\"")?;
@@ -409,7 +435,11 @@ fn test_uuid_cast_comparison_operators() -> Result<(), Box<dyn std::error::Error
     let query2 = uuid_entity::Entity::find().filter(condition2);
     let sql2 = query2.build(DbBackend::Postgres).to_string();
 
-    assert!(sql2.contains("CAST"), "SQL should contain CAST for UUID lt comparison: {}", sql2);
+    assert!(
+        sql2.contains("CAST"),
+        "SQL should contain CAST for UUID lt comparison: {}",
+        sql2
+    );
 
     Ok(())
 }
@@ -422,8 +452,16 @@ fn test_timestamp_cast_in_sql() -> Result<(), Box<dyn std::error::Error>> {
     let query = uuid_entity::Entity::find().filter(condition);
     let sql = query.build(DbBackend::Postgres).to_string();
 
-    assert!(sql.contains("CAST"), "SQL should contain CAST for timestamp: {}", sql);
-    assert!(sql.contains("timestamptz"), "SQL should cast to timestamptz type: {}", sql);
+    assert!(
+        sql.contains("CAST"),
+        "SQL should contain CAST for timestamp: {}",
+        sql
+    );
+    assert!(
+        sql.contains("timestamptz"),
+        "SQL should cast to timestamptz type: {}",
+        sql
+    );
 
     Ok(())
 }
@@ -436,8 +474,139 @@ fn test_enum_cast_in_sql() -> Result<(), Box<dyn std::error::Error>> {
     let query = enum_entity::Entity::find().filter(condition);
     let sql = query.build(DbBackend::Postgres).to_string();
 
-    assert!(sql.contains("CAST"), "SQL should contain CAST for enum: {}", sql);
-    assert!(sql.contains("status_type"), "SQL should cast to enum type name: {}", sql);
+    assert!(
+        sql.contains("CAST"),
+        "SQL should contain CAST for enum: {}",
+        sql
+    );
+    assert!(
+        sql.contains("status_type"),
+        "SQL should cast to enum type name: {}",
+        sql
+    );
 
     Ok(())
+}
+
+// AIP-160 gives OR a higher precedence than AND:
+// `a AND b OR c` means `a AND (b OR c)`.
+#[tokio::test]
+async fn test_or_binds_tighter_than_and() -> Result<(), Box<dyn std::error::Error>> {
+    let db = setup_test_db().await?;
+    seed_data(&db).await?;
+
+    let filter = parse_filter("name = \"Charlie\" AND age > 40 OR active = false")?;
+    let users = Entity::find()
+        .filter(filter.to_condition::<Entity>()?)
+        .all(&db)
+        .await?;
+
+    // With AND first, Eve would also match.
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].name, "Charlie");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sequence_means_and() -> Result<(), Box<dyn std::error::Error>> {
+    let db = setup_test_db().await?;
+    seed_data(&db).await?;
+
+    let filter = parse_filter("active = true age > 30")?;
+    let users = Entity::find()
+        .filter(filter.to_condition::<Entity>()?)
+        .all(&db)
+        .await?;
+
+    assert_eq!(users.len(), 2); // David (35) and Frank (42)
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_empty_filter_matches_all() -> Result<(), Box<dyn std::error::Error>> {
+    let db = setup_test_db().await?;
+    seed_data(&db).await?;
+
+    let filter = parse_filter("")?;
+    let count = Entity::find()
+        .filter(filter.to_condition::<Entity>()?)
+        .count(&db)
+        .await?;
+
+    assert_eq!(count, 6);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_wildcard_strings() -> Result<(), Box<dyn std::error::Error>> {
+    let db = setup_test_db().await?;
+    seed_data(&db).await?;
+
+    let prefix = parse_filter("name = \"A*\"")?;
+    let users = Entity::find()
+        .filter(prefix.to_condition::<Entity>()?)
+        .all(&db)
+        .await?;
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].name, "Alice");
+
+    let suffix = parse_filter("email = \"*@test.com\"")?;
+    let count = Entity::find()
+        .filter(suffix.to_condition::<Entity>()?)
+        .count(&db)
+        .await?;
+    assert_eq!(count, 2); // Charlie and Eve
+
+    // LIKE metacharacters in the value are matched literally.
+    let literal = parse_filter("email : \"_\"")?;
+    let count = Entity::find()
+        .filter(literal.to_condition::<Entity>()?)
+        .count(&db)
+        .await?;
+    assert_eq!(count, 0);
+
+    Ok(())
+}
+
+#[test]
+fn test_unquoted_enum_value_is_cast() -> Result<(), Box<dyn std::error::Error>> {
+    let filter = parse_filter("status = active")?;
+    let condition = filter.to_condition::<enum_entity::Entity>()?;
+    let sql = enum_entity::Entity::find()
+        .filter(condition)
+        .build(DbBackend::Postgres)
+        .to_string();
+
+    assert!(sql.contains("CAST('active' AS status_type)"), "{sql}");
+    Ok(())
+}
+
+#[test]
+fn test_rejects_values_that_do_not_fit_the_column() {
+    use aip_160::FilterError;
+
+    let invalid = |input: &str| parse_filter(input).unwrap().to_condition::<Entity>();
+    assert!(matches!(
+        invalid("age > abc"),
+        Err(FilterError::InvalidValue { .. })
+    ));
+    assert!(matches!(
+        invalid("active = yes"),
+        Err(FilterError::InvalidValue { .. })
+    ));
+    assert!(matches!(
+        invalid("score < \"1\""),
+        Err(FilterError::InvalidValue { .. })
+    ));
+    assert!(matches!(
+        invalid("missing = 1"),
+        Err(FilterError::InvalidField(_))
+    ));
+    assert!(matches!(invalid("Alice"), Err(FilterError::Unsupported(_))));
+    assert!(matches!(
+        invalid("name.first = x"),
+        Err(FilterError::Unsupported(_))
+    ));
+    assert!(matches!(invalid("age:1"), Err(FilterError::Unsupported(_))));
 }

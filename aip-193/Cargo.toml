@@ -1,11 +1,16 @@
 [package]
 name = "aip-193"
-version = "0.2.6"
-description = "A Rust implementation of Google AIP-193 Errors."
+version = "0.2.7"
+description = "A Rust implementation of Google AIP-193 Errors, with optional protobuf google.rpc types."
 edition = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
+# The generator is a separate crate that runs on demand.
+exclude = ["codegen"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = ["http"]
@@ -15,6 +20,10 @@ http = ["dep:http"]
 
 axum = ["dep:axum-core", "dep:serde_json", "http"]
 utoipa = ["dep:utoipa"]
+# Protobuf `google.rpc` types generated with buffa, in `aip_193::proto`.
+proto = ["dep:buffa", "dep:buffa-types"]
+# Conversions between `aip_193::proto::Status` and `connectrpc::ConnectError`.
+connectrpc = ["proto", "dep:connectrpc", "dep:base64"]
 
 [dependencies]
 aip-193-derive = { version = "0.2.2", path = "../aip-193-derive", optional = true }
@@ -27,6 +36,10 @@ utoipa = { version = "5", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
 strum = { version = "0.26", features = ["derive"] }
+buffa = { version = "0.9", features = ["json"], optional = true }
+buffa-types = { version = "0.9", features = ["json"], optional = true }
+connectrpc = { version = "0.9", default-features = false, optional = true }
+base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"

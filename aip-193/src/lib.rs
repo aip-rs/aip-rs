@@ -18,6 +18,8 @@ mod code;
 mod http_impl;
 
 mod error_details;
+#[cfg(feature = "proto")]
+pub mod proto;
 mod status;
 mod traits;
 

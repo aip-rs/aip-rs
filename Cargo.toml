@@ -1,18 +1,19 @@
 [workspace]
 members = [".", "aip-160", "aip-193", "aip-193-derive"]
+exclude = ["aip-193/codegen"]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 authors = ["AprilNEA <github@sku.moe>"]
-license = "MIT or Apache-2.0"
-repository = "https://github.com/AprilNEA/aip"
-homepage = "https://github.com/AprilNEA/aip"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/aip-rs/aip-rs"
+homepage = "https://github.com/aip-rs/aip-rs"
 
 [package]
 name = "aip"
-description = "A Rust implementation of Google AIP-160 HTTP Paths and AIP-193 Errors."
-version = "0.2.2"
+description = "A Rust implementation of Google AIP-160 Filtering and AIP-193 Errors."
+version = "0.3.0"
 edition = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -23,7 +24,10 @@ default = []
 derive = ["aip-193/derive"]
 
 axum = ["aip-193/axum", "aip-193/derive"]
+proto = ["aip-193/proto"]
+connectrpc = ["aip-193/connectrpc"]
+sea-orm = ["aip-160/sea-orm"]
 
 [dependencies]
-aip-160 = { version = "0.1.5", path = "aip-160" }
-aip-193 = { version = "0.2.2", path = "aip-193" }
+aip-160 = { version = "0.2.0", path = "aip-160" }
+aip-193 = { version = "0.2.7", path = "aip-193" }

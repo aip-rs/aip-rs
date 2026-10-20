@@ -1,33 +1,29 @@
 use aip_160::parse_filter;
 
 fn main() {
-
-    // Example filters
-    let examples = vec![
+    let examples = [
         "name = \"John Doe\"",
-        "age > 18 AND active = true",
-        "(status = \"active\" OR status = \"pending\") AND created > \"2024-01-01\"",
-        "NOT deleted = true",
-        "tags : \"important\"",
-        "price >= 100 AND price <= 1000",
-        "email : \"@example.com\" AND verified = true",
-        "count != 0",
+        "state = SUSPENDED AND score >= 2.5",
+        // OR binds tighter than AND: this is `a = 1 AND (b = 2 OR c = 3)`.
+        "a = 1 AND b = 2 OR c = 3",
+        // A whitespace sequence; exact-match services treat it as AND.
+        "New York Giants",
+        "-file:\".java\" AND NOT deleted = true",
+        "labels.env = prod AND regex(name, \"^web-\")",
+        "ttl < 1.5s AND email = \"*@example.com\"",
         "value = null",
+        "a = = b",
     ];
 
-    for (i, example) in examples.iter().enumerate() {
-        println!("Example {}: {}", i + 1, example);
-
+    for example in examples {
+        println!("{example}");
         match parse_filter(example) {
             Ok(filter) => {
-                println!("  ✓ Parsed successfully");
-                println!("  AST: {:?}", filter.expression);
-                println!();
+                println!("  canonical: {filter}");
+                println!("  ast: {:?}", filter.expression);
             }
-            Err(e) => {
-                println!("  ✗ Parse error: {}", e);
-                println!();
-            }
+            Err(error) => println!("  error: {error}"),
         }
+        println!();
     }
 }

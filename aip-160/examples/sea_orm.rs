@@ -1,4 +1,4 @@
-use aip_160::{parse_filter, ToSeaOrmCondition};
+use aip_160::{ToSeaOrmCondition, parse_filter};
 use sea_orm::entity::prelude::*;
 
 // Define the User entity as usual
@@ -47,12 +47,10 @@ fn main() {
         print!("  {:<70} ", filter_str);
 
         match parse_filter(filter_str) {
-            Ok(filter) => {
-                match filter.to_condition::<Entity>() {
-                    Ok(_) => println!("✓"),
-                    Err(e) => println!("✗ {}", e),
-                }
-            }
+            Ok(filter) => match filter.to_condition::<Entity>() {
+                Ok(_) => println!("✓"),
+                Err(e) => println!("✗ {}", e),
+            },
             Err(e) => println!("✗ {}", e),
         }
     }

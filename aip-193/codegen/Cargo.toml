@@ -1,0 +1,14 @@
+[package]
+name = "aip-193-codegen"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Regenerates the buffa code for google.rpc in aip-193/src/proto/generated."
+
+# Not a member of the aip-rs workspace: generation runs on demand, not on
+# every build.
+[workspace]
+
+[dependencies]
+# Keep this version in step with the `buffa` runtime that aip-193 depends on.
+connectrpc-build = "=0.9.0"

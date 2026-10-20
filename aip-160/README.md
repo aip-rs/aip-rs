@@ -1,206 +1,99 @@
-# AIP-160 Filter Parser with SeaORM Support
+# aip-160
 
-A Rust implementation of [Google AIP-160](https://google.aip.dev/160) filtering standard with SeaORM integration.
+A parser for [Google AIP-160](https://google.aip.dev/160) list filters, with an optional conversion to SeaORM conditions.
 
-## Features
-
-- **Full AIP-160 Support** - Parse Google AIP-160 filter expressions
-- **Type Safe** - Strongly typed AST and error handling
-- **Zero Boilerplate** - No trait implementation required!
-- **Well Tested** - Comprehensive test coverage
-- **SeaORM Integration** - Convert filters directly to SeaORM conditions
+The parser follows the [AIP-160 EBNF grammar](https://google.aip.dev/assets/misc/ebnf-filtering.txt). It is a hand-written recursive-descent parser with no grammar-generator dependency.
 
 ## Installation
 
 ```toml
 [dependencies]
-# Basic parsing only
-aip-160 = "0.1"
+# Parsing only
+aip-160 = "0.2"
 
-# With SeaORM support
-aip-160 = { version = "0.1", features = ["sea-orm"] }
+# Parsing and conversion to SeaORM 2.0 conditions
+aip-160 = { version = "0.2", features = ["sea-orm"] }
 ```
 
-## Quick Start
-
-### Basic Parsing
+## Parse a filter
 
 ```rust
-use aip_160::parse_filter;
+use aip_160::{parse_filter, Comparator, Expression};
 
-fn main() {
-    let filter = parse_filter("name = \"John\" AND age > 18").unwrap();
-    println!("{}", filter);
-}
+let filter = parse_filter("state = SUSPENDED AND score >= 2.5").unwrap();
+let Some(Expression::And(children)) = &filter.expression else { panic!() };
+let Expression::Restriction(state) = &children[0] else { panic!() };
+assert_eq!(state.comparable.field_path().as_deref(), Some("state"));
+assert_eq!(state.comparator, Comparator::Equal);
+assert_eq!(state.arg.as_value().map(|v| v.as_str()), Some("SUSPENDED"));
 ```
 
-### SeaORM Integration with Automatic Type Conversion
+`Filter` implements `Display`. The output is the canonical form of the filter, with explicit parentheses.
 
-```rust
+`parse_filter` limits the nesting depth to `DEFAULT_MAX_DEPTH`. Use `parse_filter_with_max_depth` to set a different limit.
+
+## Supported syntax
+
+| Element | Example | Notes |
+| --- | --- | --- |
+| Comparators | `a = 1`, `a != 1`, `a < 1`, `a <= 1`, `a > 1`, `a >= 1` | |
+| Has | `labels:env`, `tags:"prod"` | |
+| `AND` | `a = 1 AND b = 2` | Lowest precedence. Case-sensitive. |
+| Sequence | `a = 1 b = 2` | Whitespace-separated terms. Binds tighter than `AND`. |
+| `OR` | `a = 1 OR a = 2` | Highest precedence. Case-sensitive. |
+| Negation | `NOT a = 1`, `-a = 1` | |
+| Grouping | `(a = 1 OR b = 2) AND c = 3` | |
+| Global restriction | `prod` | A comparable with no comparator. |
+| Traversal | `labels.env = prod` | |
+| Function call | `regex(name, "^prod")` | Parsed only. The service decides which functions it supports. |
+| Unquoted text | `ACTIVE`, `42`, `2.5`, `true`, `20s` | Enum values, numbers, booleans and durations. |
+| Quoted string | `"abc"`, `'abc'` | May start or end with the `*` wildcard. |
+
+Precedence follows AIP-160: `OR` binds tighter than a sequence, and a sequence binds tighter than `AND`. So `a AND b OR c` means `a AND (b OR c)`.
+
+The parser keeps literals as written. `Value` has helpers that read a literal as a boolean, a number, a duration or a wildcard match.
+
+## Convert to a SeaORM condition
+
+Enable the `sea-orm` feature. The conversion supports SeaORM 2.0.
+
+```rust,ignore
 use aip_160::{parse_filter, ToSeaOrmCondition};
-use sea_orm::entity::prelude::*;
 
-async fn find_users(
-    db: &DatabaseConnection,
-    filter_str: &str
-) -> Result<Vec<Model>, DbErr> {
-    // 1. Parse the filter string
-    let filter = parse_filter(filter_str)?;
-
-    // 2. Convert to SeaORM condition - pass Entity type!
-    let condition = filter.to_condition::<Entity>()?;
-
-    // 3. Use in your query
-    Entity::find()
-        .filter(condition)
-        .all(db)
-        .await
-}
+let filter = parse_filter(r#"name = "Alice" AND age > 18"#)?;
+let condition = filter.to_condition::<user::Entity>()?;
+user::Entity::find().filter(condition).all(db).await?;
 ```
 
-### ✨ Zero-Config Automatic Type Conversion
+The conversion supports restrictions on top-level columns, joined with `AND`, `OR`, `NOT` and sequences. A field name matches a column directly, or after a conversion from `snake_case` to `PascalCase`. Each literal is read with the type of its column:
 
-**The library automatically detects column types from your Entity and applies appropriate SQL casts!**
+| Column type | Accepted literal |
+| --- | --- |
+| boolean | `true`, `false` |
+| signed or unsigned integer | `42`, `-7` |
+| float, double, decimal, money | `2.5`, `1e3` |
+| enum | `ACTIVE` or `"ACTIVE"`, cast to the database enum type |
+| uuid, timestamp, date, time | a quoted string, cast to the column type |
+| other types | text or a quoted string |
 
-No manual configuration needed - just pass your `Entity` type to `to_condition()`:
+`field = null` and `field != null` become `IS NULL` and `IS NOT NULL`. On string columns, `field = "abc*"`, `"*abc"` and `"*abc*"` become `LIKE` patterns, and `field:"abc"` matches a substring.
 
-```rust
-// PostgreSQL with UUID - automatic casting!
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "users")]
-pub struct Model {
-    #[sea_orm(primary_key, column_type = "Uuid")]
-    pub id: Uuid,
-    pub name: String,
-    #[sea_orm(column_type = "TimestampWithTimeZone")]
-    pub created_at: DateTimeWithTimeZone,
-}
+Traversal, function calls and global restrictions return `FilterError::Unsupported`. An unknown field returns `FilterError::InvalidField`. A literal that does not match the column type returns `FilterError::InvalidValue`. Map these errors to `INVALID_ARGUMENT`, as AIP-160 requires.
 
-// Just use string values - they're automatically cast to the right type!
-let filter = parse_filter("id = \"550e8400-e29b-41d4-a716-446655440000\"")?;
-let condition = filter.to_condition::<Entity>()?;  // Automatically casts to UUID!
+## Changes from 0.1
 
-Entity::find().filter(condition).all(db).await?;
-```
-
-**Supported automatic conversions:**
-- `String` → `UUID` (for UUID columns)
-- `String` → `TIMESTAMP` / `TIMESTAMPTZ` (for timestamp columns)
-- `String` → `DATE` (for date columns)
-- `String` → `TIME` (for time columns)
-- `String` → `ENUM` (for PostgreSQL enum columns)
-- `Number` → `INTEGER` / `FLOAT` (based on database column type)
-
-The library reads your Entity's column definitions and generates the appropriate SQL `CAST` expressions automatically!
-
-## Supported Filter Syntax
-
-### Comparison Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `=` | Equal | `name = "John"` |
-| `!=` | Not equal | `status != "inactive"` |
-| `>` | Greater than | `age > 18` |
-| `>=` | Greater than or equal | `age >= 18` |
-| `<` | Less than | `age < 65` |
-| `<=` | Less than or equal | `age <= 65` |
-| `:` | Contains/Has | `email : "@gmail.com"` |
-
-### Logical Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `AND` | Logical AND | `active = true AND age > 18` |
-| `OR` | Logical OR | `status = "active" OR status = "pending"` |
-| `NOT` | Logical NOT | `NOT deleted = true` |
-| `( )` | Grouping | `(a = 1 OR a = 2) AND b = 3` |
-
-### Value Types
-
-| Type | Example |
-|------|---------|
-| String | `"value"` or `'value'` |
-| Number | `42`, `3.14`, `-10`, `1e5` |
-| Boolean | `true`, `false` |
-| Null | `null` |
-
-## 💡 Example Filters
-
-```text
-# Simple equality
-name = "John Doe"
-
-# Numeric comparison
-age > 18 AND age < 65
-
-# Multiple conditions
-active = true AND age > 18 AND verified = true
-
-# OR conditions
-status = "active" OR status = "pending"
-
-# Grouped expressions
-(status = "active" OR status = "pending") AND age > 18
-
-# Contains/substring matching
-email : "@example.com"
-
-# NOT operator
-NOT deleted = true
-
-# Complex query
-(active = true OR status = "trial") AND age >= 18 AND email : "@company.com"
-```
-
-## How It Works
-
-The library automatically converts snake_case field names to PascalCase Column names:
-
-```text
-"created_at" → Column::CreatedAt
-"user_id" → Column::UserId
-"is_active" → Column::IsActive
-```
-
-## Architecture
-
-```
-┌─────────────┐
-│ Filter Text │  "age > 18 AND active = true"
-└──────┬──────┘
-       │ parse_filter()
-       ▼
-┌─────────────┐
-│    AST      │  Filter { expression: And(...) }
-└──────┬──────┘
-       │ to_condition::<Column>()
-       ▼
-┌─────────────┐
-│  Condition  │  SeaORM Condition
-└─────────────┘
-```
-
-
-## Google AIP-160 Compliance
-
-- ✅ Comparison operators (=, !=, <, <=, >, >=)
-- ✅ Logical operators (AND, OR, NOT)
-- ✅ Grouping with parentheses
-- ✅ String, number, boolean, and null values
-- ✅ Has/contains operator (:)
-- ⚠️ Partial: Function calls (not yet implemented)
+- `OR` now binds tighter than `AND`, as AIP-160 requires. In 0.1, `a AND b OR c` meant `(a AND b) OR c`.
+- Unquoted text values, traversal, function calls, global restrictions, `-` negation, sequences and `*` wildcards are new.
+- The AST is new. See the `ast` module.
+- The `sea-orm` feature uses SeaORM 2.0 instead of 1.1.
+- The `pest` dependency is removed.
 
 ## License
 
-MIT or Apache-2.0
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+MIT or Apache-2.0.
 
 ## References
 
 - [Google AIP-160: Filtering](https://google.aip.dev/160)
-- [SeaORM Documentation](https://www.sea-ql.org/SeaORM/)
-- [Pest Parser](https://pest.rs/)
+- [AIP-160 EBNF grammar](https://google.aip.dev/assets/misc/ebnf-filtering.txt)
+- [SeaORM documentation](https://www.sea-ql.org/SeaORM/)

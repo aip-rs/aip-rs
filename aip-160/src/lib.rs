@@ -1,112 +1,44 @@
-/*!
-# Google AIP-160 Filter Parser with SeaORM Support
-
-This crate provides a parser for [Google AIP-160](https://google.aip.dev/160) filtering expressions
-and converts them to SeaORM conditions for database queries.
-
-## Features
-
-- Parse Google AIP-160 filter expressions
-- Convert filters to SeaORM conditions
-- Support for logical operators (AND, OR, NOT)
-- Support for comparison operators (=, !=, <, <=, >, >=, :)
-- Support for strings, numbers, booleans, and null values
-
-## Usage
-
-### Parsing a Filter
-
-```rust
-use aip_160::parse_filter;
-
-let filter = parse_filter("name = \"John\" AND age > 18").unwrap();
-println!("{}", filter);
-```
-
-### Converting to SeaORM Condition
-
-```rust,ignore
-use sea_orm::entity::prelude::*;
-use aip_160::{parse_filter, sea_orm::{FieldMapper, ToSeaOrmCondition}};
-
-// Define your entity
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "users")]
-pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    pub name: String,
-    pub email: String,
-    pub age: i32,
-    pub active: bool,
-}
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
-
-impl ActiveModelBehavior for ActiveModel {}
-
-// Implement the FieldMapper trait
-impl FieldMapper for Entity {
-    fn map_field(&self, field: &str) -> aip_160::error::Result<sea_orm::sea_query::SimpleExpr> {
-        match field {
-            "id" => Ok(Column::Id.into_simple_expr()),
-            "name" => Ok(Column::Name.into_simple_expr()),
-            "email" => Ok(Column::Email.into_simple_expr()),
-            "age" => Ok(Column::Age.into_simple_expr()),
-            "active" => Ok(Column::Active.into_simple_expr()),
-            _ => Err(aip_160::error::FilterError::InvalidField(field.to_string())),
-        }
-    }
-}
-
-// Use in your query
-async fn find_users(db: &DatabaseConnection, filter_str: &str) -> Result<Vec<Model>, DbErr> {
-    let filter = parse_filter(filter_str).unwrap();
-    let condition = filter.to_condition(&Entity).unwrap();
-
-    Entity::find()
-        .filter(condition)
-        .all(db)
-        .await
-}
-```
-
-## Supported Filter Syntax
-
-### Basic Comparisons
-- `name = "John"` - Equality
-- `age > 18` - Greater than
-- `age >= 18` - Greater than or equal
-- `age < 65` - Less than
-- `age <= 65` - Less than or equal
-- `status != "inactive"` - Not equal
-- `tags : "important"` - Contains/has (for substring matching)
-
-### Logical Operators
-- `name = "John" AND age > 18` - AND
-- `status = "active" OR status = "pending"` - OR
-- `NOT deleted = true` - NOT
-- `(status = "active" OR status = "pending") AND age > 18` - Grouped expressions
-
-### Value Types
-- Strings: `"value"` or `'value'`
-- Numbers: `42`, `3.14`, `-10`, `1e5`
-- Booleans: `true`, `false` (case insensitive)
-- Null: `null` (case insensitive)
-
-## Example Filters
-
-```text
-name = "John Doe"
-age > 18 AND active = true
-(status = "active" OR status = "pending") AND created > "2024-01-01"
-NOT deleted = true
-tags : "important"
-price >= 100 AND price <= 1000
-email : "@example.com" AND verified = true
-```
-*/
+//! A parser for [AIP-160](https://google.aip.dev/160) list filters, with an
+//! optional conversion to SeaORM conditions.
+//!
+//! The parser follows the
+//! [AIP-160 EBNF](https://google.aip.dev/assets/misc/ebnf-filtering.txt):
+//!
+//! - `OR` binds tighter than whitespace sequences, which bind tighter than
+//!   `AND`. `a AND b OR c` means `a AND (b OR c)`.
+//! - `AND`, `OR` and `NOT` are case-sensitive keywords.
+//! - `NOT a` and `-a` negate a term.
+//! - Comparators: `=`, `!=`, `<`, `<=`, `>`, `>=` and `:` (has).
+//! - A comparable without a comparator, such as `prod`, is a global
+//!   restriction.
+//! - Members traverse fields with `.`, as in `labels.env`.
+//! - Function calls such as `regex(name, "^prod")` are parsed; services
+//!   decide which functions they support.
+//! - Values are unquoted text (`ACTIVE`, `42`, `2.5`, `true`, `20s`) or quoted
+//!   strings (`"abc"`, `'abc'`). Quoted strings may start or end with the
+//!   `*` wildcard.
+//!
+//! The parser keeps literals as written. [`Value`] has helpers to read them
+//! as booleans, numbers, durations or wildcard matches.
+//!
+//! # Example
+//!
+//! ```
+//! use aip_160::{parse_filter, Comparator, Expression};
+//!
+//! let filter = parse_filter("state = SUSPENDED AND score >= 2.5").unwrap();
+//! let Some(Expression::And(children)) = &filter.expression else { panic!() };
+//! let Expression::Restriction(state) = &children[0] else { panic!() };
+//! assert_eq!(state.comparable.field_path().as_deref(), Some("state"));
+//! assert_eq!(state.comparator, Comparator::Equal);
+//! assert_eq!(state.arg.as_value().map(|v| v.as_str()), Some("SUSPENDED"));
+//! ```
+//!
+//! # Features
+//!
+//! - `sea-orm`: converts a [`Filter`] to a `sea_orm::Condition` with
+//!   [`ToSeaOrmCondition`]. See the [`sea_orm`] module for
+//!   the supported subset.
 
 pub mod ast;
 pub mod error;
@@ -115,10 +47,12 @@ pub mod parser;
 #[cfg(feature = "sea-orm")]
 pub mod sea_orm;
 
-// Re-export commonly used items
-pub use ast::{Comparator, Expression, Filter, Restriction, Value};
+pub use ast::{
+    Arg, Comparable, Comparator, Expression, Filter, Function, Member, Restriction, StringMatch,
+    Value,
+};
 pub use error::{FilterError, Result};
-pub use parser::parse_filter;
+pub use parser::{DEFAULT_MAX_DEPTH, parse_filter, parse_filter_with_max_depth};
 
 #[cfg(feature = "sea-orm")]
-pub use sea_orm::{column_from_str, ToSeaOrmCondition};
+pub use sea_orm::{ToSeaOrmCondition, column_from_str};
