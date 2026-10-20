@@ -1,6 +1,6 @@
 [package]
 name = "aip-193"
-version = "0.2.7"
+version = "0.2.8"
 description = "A Rust implementation of Google AIP-193 Errors, with optional protobuf google.rpc types."
 edition = { workspace = true }
 authors = { workspace = true }

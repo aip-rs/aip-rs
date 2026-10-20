@@ -50,16 +50,21 @@ If your protos import `google/rpc/status.proto` or `google/rpc/error_details.pro
 
 ```rust,ignore
 // build.rs
-let mut buffa = buffa_codegen::CodeGenConfig::default();
+let mut buffa = connectrpc_build::CodeGenConfig::default();
 buffa.extern_paths.push((
     ".google.rpc".to_owned(),
     "::aip_193::proto::google::rpc".to_owned(),
 ));
 connectrpc_build::Config::new()
+    // `buffa_config` replaces the whole buffa config, including the JSON
+    // setting that connectrpc-build turns on by default. Turn it on again.
     .buffa_config(buffa)
+    .generate_json(true)
     .files(&["my/service.proto"])
     .compile()?;
 ```
+
+The mapping also covers the view types that connectrpc-build generates.
 
 To render `google.protobuf.Any` details in Connect JSON, register the types once:
 
