@@ -3,15 +3,15 @@ use std::collections::HashMap;
 
 /// Describes the cause of the error with structured details.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "utoipa", schema(as = ErrorStatusDetailsInfo))]
 pub struct ErrorInfo {
     /// The reason of the error (UPPER_SNAKE_CASE).
     /// Example: "API_DISABLED", "STOCKOUT"
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
 
     /// The logical grouping to which the "reason" belongs.
     /// Example: "googleapis.com", "pubsub.googleapis.com"
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub domain: String,
 
     /// Additional structured details about this error.
@@ -144,8 +144,7 @@ mod tests {
 
     #[test]
     fn test_error_info_clone() {
-        let info = ErrorInfo::new("ERROR", "test.com")
-            .with_metadata("key", "value");
+        let info = ErrorInfo::new("ERROR", "test.com").with_metadata("key", "value");
         let cloned = info.clone();
 
         assert_eq!(info, cloned);
@@ -212,8 +211,8 @@ mod tests {
 
     #[test]
     fn test_error_info_serialize() {
-        let info = ErrorInfo::new("API_DISABLED", "googleapis.com")
-            .with_metadata("service", "pubsub");
+        let info =
+            ErrorInfo::new("API_DISABLED", "googleapis.com").with_metadata("service", "pubsub");
 
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains(r#""reason":"API_DISABLED""#));
@@ -236,12 +235,11 @@ mod tests {
     }
 
     #[test]
-    fn test_error_info_skip_empty_fields() {
+    fn test_error_info_always_serializes_reason_and_domain() {
         let info = ErrorInfo::default();
         let json = serde_json::to_string(&info).unwrap();
-
-        // Empty fields should be skipped
-        assert_eq!(json, "{}");
+        // `reason` and `domain` are required; empty metadata is skipped.
+        assert_eq!(json, r#"{"reason":"","domain":""}"#);
     }
 
     #[test]
@@ -326,9 +324,9 @@ mod tests {
         // Ensure all methods return Self for chaining
         let info = ErrorInfo::builder()
             .reason("A")
-            .reason("B")  // Overwrite
+            .reason("B") // Overwrite
             .domain("x")
-            .domain("y")  // Overwrite
+            .domain("y") // Overwrite
             .metadata("k1", "v1")
             .metadata("k2", "v2")
             .build();
@@ -340,9 +338,7 @@ mod tests {
 
     #[test]
     fn test_builder_debug() {
-        let builder = ErrorInfo::builder()
-            .reason("TEST")
-            .domain("test.com");
+        let builder = ErrorInfo::builder().reason("TEST").domain("test.com");
 
         // Should implement Debug
         let debug_str = format!("{:?}", builder);

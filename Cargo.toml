@@ -12,7 +12,7 @@ homepage = "https://github.com/AprilNEA/aip"
 [package]
 name = "aip"
 description = "A Rust implementation of Google AIP-160 HTTP Paths and AIP-193 Errors."
-version = "0.2.0"
+version = "0.2.2"
 edition = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -26,4 +26,4 @@ axum = ["aip-193/axum", "aip-193/derive"]
 
 [dependencies]
 aip-160 = { version = "0.1.5", path = "aip-160" }
-aip-193 = { version = "0.2.0", path = "aip-193" }
+aip-193 = { version = "0.2.2", path = "aip-193" }

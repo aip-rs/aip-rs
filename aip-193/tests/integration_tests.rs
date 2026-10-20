@@ -28,9 +28,7 @@ fn test_complete_error_workflow() {
         code: 404,
         message: "The requested user does not exist".to_string(),
         status: Code::NotFound,
-        details: StatusDetails {
-            error_info: Some(error_info),
-        },
+        details: StatusDetails { error_info },
     };
 
     // 3. Serialize to JSON
@@ -50,8 +48,7 @@ fn test_complete_error_workflow() {
     assert_eq!(parsed.status, Code::NotFound);
     assert_eq!(parsed.message, "The requested user does not exist");
 
-    let parsed_info = parsed.details.error_info.unwrap();
-    assert_eq!(parsed_info.reason, "USER_NOT_FOUND");
+    assert_eq!(parsed.details.error_info.reason, "USER_NOT_FOUND");
 }
 
 /// Tests Code to HTTP StatusCode conversion round-trip
@@ -86,9 +83,7 @@ fn test_complex_error_scenario() {
         code: 429,
         message: "Rate limit exceeded. Please retry after 60 seconds.".to_string(),
         status: Code::ResourceExhausted,
-        details: StatusDetails {
-            error_info: Some(error_info),
-        },
+        details: StatusDetails { error_info },
     };
 
     // Verify HTTP mapping
@@ -96,9 +91,11 @@ fn test_complex_error_scenario() {
     assert_eq!(http_code, StatusCode::TOO_MANY_REQUESTS);
 
     // Verify metadata
-    let info = status.details.error_info.as_ref().unwrap();
-    assert_eq!(info.metadata.len(), 4);
-    assert_eq!(info.metadata.get("retry_after_seconds"), Some(&"60".to_string()));
+    assert_eq!(status.details.error_info.metadata.len(), 4);
+    assert_eq!(
+        status.details.error_info.metadata.get("retry_after_seconds"),
+        Some(&"60".to_string())
+    );
 }
 
 // ============================================================================
@@ -107,18 +104,7 @@ fn test_complex_error_scenario() {
 
 /// Tests that empty optional fields are omitted in JSON
 #[test]
-fn test_json_skip_empty_fields() {
-    // Status with no message and no details
-    let minimal = Status {
-        code: 200,
-        message: String::new(),
-        status: Code::Ok,
-        details: StatusDetails::default(),
-    };
-
-    let json = serde_json::to_string(&minimal).unwrap();
-    assert_eq!(json, r#"{"code":200,"status":"OK"}"#);
-
+fn test_json_skips_only_empty_metadata() {
     // ErrorInfo with only reason
     let info = ErrorInfo {
         reason: "ERROR".to_string(),
@@ -127,26 +113,20 @@ fn test_json_skip_empty_fields() {
     };
 
     let json = serde_json::to_string(&info).unwrap();
-    assert_eq!(json, r#"{"reason":"ERROR"}"#);
+    // `reason` and `domain` are required, so only `metadata` is skipped.
+    assert_eq!(json, r#"{"reason":"ERROR","domain":""}"#);
 }
 
-/// Tests JSON deserialization with missing fields
+/// Tests JSON deserialization without the optional `metadata`, and that
+/// the required `domain` must be present.
 #[test]
 fn test_json_deserialize_partial() {
-    // Minimal Status
-    let json = r#"{"code": 404, "status": "NOT_FOUND"}"#;
-    let status: Status = serde_json::from_str(json).unwrap();
-    assert_eq!(status.code, 404);
-    assert_eq!(status.status, Code::NotFound);
-    assert!(status.message.is_empty());
-    assert!(status.details.is_empty());
-
-    // ErrorInfo with only reason
-    let json = r#"{"reason": "TEST"}"#;
+    let json = r#"{"reason": "TEST", "domain": ""}"#;
     let info: ErrorInfo = serde_json::from_str(json).unwrap();
     assert_eq!(info.reason, "TEST");
     assert!(info.domain.is_empty());
     assert!(info.metadata.is_empty());
+    assert!(serde_json::from_str::<ErrorInfo>(r#"{"reason": "TEST"}"#).is_err());
 }
 
 /// Tests JSON with nested structures
@@ -172,9 +152,11 @@ fn test_json_nested_structure() {
     assert_eq!(status.code, 403);
     assert_eq!(status.status, Code::PermissionDenied);
 
-    let info = status.details.error_info.unwrap();
-    assert_eq!(info.reason, "PERMISSION_DENIED");
-    assert_eq!(info.metadata.get("permission"), Some(&"storage.objects.get".to_string()));
+    assert_eq!(status.details.error_info.reason, "PERMISSION_DENIED");
+    assert_eq!(
+        status.details.error_info.metadata.get("permission"),
+        Some(&"storage.objects.get".to_string())
+    );
 }
 
 // ============================================================================
@@ -405,9 +387,7 @@ fn test_api_error_response_scenario() {
         code: 403,
         message: "You don't have permission to read this document".to_string(),
         status: Code::PermissionDenied,
-        details: StatusDetails {
-            error_info: Some(error_info),
-        },
+        details: StatusDetails { error_info },
     };
 
     // API would return this as JSON
@@ -421,9 +401,11 @@ fn test_api_error_response_scenario() {
     assert_eq!(parsed.status, Code::PermissionDenied);
 
     // Client can log structured error details
-    let info = parsed.details.error_info.unwrap();
-    assert_eq!(info.reason, "PERMISSION_DENIED");
-    assert_eq!(info.metadata.get("permission"), Some(&"documents.read".to_string()));
+    assert_eq!(parsed.details.error_info.reason, "PERMISSION_DENIED");
+    assert_eq!(
+        parsed.details.error_info.metadata.get("permission"),
+        Some(&"documents.read".to_string())
+    );
 }
 
 /// Simulates validation error with multiple fields
@@ -444,9 +426,7 @@ fn test_validation_error_scenario() {
         code: 400,
         message: "Validation failed: email must be a valid email address".to_string(),
         status: Code::InvalidArgument,
-        details: StatusDetails {
-            error_info: Some(error_info),
-        },
+        details: StatusDetails { error_info },
     };
 
     let json = serde_json::to_string_pretty(&status).unwrap();
@@ -473,9 +453,7 @@ fn test_unicode_handling() {
         code: 400,
         message: "入力エラー: 名前フィールドが無効です 🚫".to_string(),
         status: Code::InvalidArgument,
-        details: StatusDetails {
-            error_info: Some(error_info),
-        },
+        details: StatusDetails { error_info },
     };
 
     // Should serialize and deserialize correctly
@@ -485,9 +463,11 @@ fn test_unicode_handling() {
     assert!(parsed.message.contains("入力エラー"));
     assert!(parsed.message.contains("🚫"));
 
-    let info = parsed.details.error_info.unwrap();
-    assert!(info.domain.contains("日本"));
-    assert_eq!(info.metadata.get("emoji"), Some(&"🚫❌⚠️".to_string()));
+    assert!(parsed.details.error_info.domain.contains("日本"));
+    assert_eq!(
+        parsed.details.error_info.metadata.get("emoji"),
+        Some(&"🚫❌⚠️".to_string())
+    );
 }
 
 /// Tests handling of special characters in metadata
@@ -520,10 +500,7 @@ fn test_empty_status() {
     assert_eq!(status.code, 200);
     assert_eq!(status.status, Code::Ok);
     assert!(status.message.is_empty());
-    assert!(status.details.is_empty());
-
-    let json = serde_json::to_string(&status).unwrap();
-    assert_eq!(json, r#"{"code":200,"status":"OK"}"#);
+    assert!(status.details.error_info.reason.is_empty());
 }
 
 /// Tests Status with empty ErrorInfo
@@ -534,7 +511,7 @@ fn test_status_with_empty_error_info() {
         message: "Unknown error".to_string(),
         status: Code::Unknown,
         details: StatusDetails {
-            error_info: Some(ErrorInfo::default()),
+            error_info: ErrorInfo::default(),
         },
     };
 

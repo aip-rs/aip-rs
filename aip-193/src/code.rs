@@ -19,6 +19,8 @@ use strum::{AsRefStr, Display, EnumString};
     EnumString,
     AsRefStr,
 )]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "utoipa", schema(as = ErrorCode))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[repr(i32)]

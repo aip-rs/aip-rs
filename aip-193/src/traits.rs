@@ -35,11 +35,11 @@ impl<T: IntoStatus> From<T> for Status {
             message: err.message(),
             status: status_code,
             details: StatusDetails {
-                error_info: Some(ErrorInfo {
+                error_info: ErrorInfo {
                     reason: err.reason().to_string(),
                     domain: err.domain().to_string(),
                     metadata: err.metadata(),
-                }),
+                },
             },
         }
     }
@@ -182,10 +182,9 @@ mod tests {
         assert_eq!(status.status, Code::NotFound);
         assert_eq!(status.message, "Resource not found");
 
-        let error_info = status.details.error_info.as_ref().unwrap();
-        assert_eq!(error_info.reason, "RESOURCE_NOT_FOUND");
-        assert_eq!(error_info.domain, "test.example.com");
-        assert!(error_info.metadata.is_empty());
+        assert_eq!(status.details.error_info.reason, "RESOURCE_NOT_FOUND");
+        assert_eq!(status.details.error_info.domain, "test.example.com");
+        assert!(status.details.error_info.metadata.is_empty());
     }
 
     #[test]
@@ -203,15 +202,14 @@ mod tests {
         assert!(status.message.contains("user_123"));
         assert!(status.message.contains("doc_456"));
 
-        let error_info = status.details.error_info.as_ref().unwrap();
-        assert_eq!(error_info.reason, "ACCESS_DENIED");
-        assert_eq!(error_info.domain, "authz.example.com");
+        assert_eq!(status.details.error_info.reason, "ACCESS_DENIED");
+        assert_eq!(status.details.error_info.domain, "authz.example.com");
         assert_eq!(
-            error_info.metadata.get("user_id"),
+            status.details.error_info.metadata.get("user_id"),
             Some(&"user_123".to_string())
         );
         assert_eq!(
-            error_info.metadata.get("resource_id"),
+            status.details.error_info.metadata.get("resource_id"),
             Some(&"doc_456".to_string())
         );
     }
@@ -256,8 +254,8 @@ mod tests {
         let status: Status = err.into();
 
         // From<IntoStatus> should always set error_info
-        assert!(status.details.error_info.is_some());
-        assert!(!status.details.is_empty());
+        assert_eq!(status.details.error_info.reason, "PERMISSION_DENIED");
+        assert_eq!(status.details.error_info.domain, "test.example.com");
     }
 
     // ============ Serialization Tests ============
@@ -342,8 +340,7 @@ mod tests {
         assert!(status.message.contains("无效参数"));
         assert!(status.message.contains("🚫"));
 
-        let error_info = status.details.error_info.as_ref().unwrap();
-        assert!(error_info.domain.contains("例え"));
+        assert!(status.details.error_info.domain.contains("例え"));
     }
 
     #[test]
@@ -373,10 +370,9 @@ mod tests {
         }
 
         let status: Status = LargeMetadataError.into();
-        let error_info = status.details.error_info.as_ref().unwrap();
-        assert_eq!(error_info.metadata.len(), 100);
+        assert_eq!(status.details.error_info.metadata.len(), 100);
         assert_eq!(
-            error_info.metadata.get("key_50"),
+            status.details.error_info.metadata.get("key_50"),
             Some(&"value_50".to_string())
         );
     }

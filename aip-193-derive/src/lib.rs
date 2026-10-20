@@ -213,7 +213,7 @@ fn generate_code_arms(
         .iter()
         .map(|v| {
             let code = &v.code;
-            let pattern = generate_pattern(enum_name, v);
+            let pattern = generate_pattern_ignore_fields(enum_name, &v.ident, &v.fields);
             quote! {
                 #pattern => #krate::Code::#code
             }
@@ -229,23 +229,22 @@ fn generate_message_arms(
     variants
         .iter()
         .map(|v| {
-            let pattern = generate_pattern(enum_name, v);
-
             let message_expr = if let Some(template) = &v.message {
-                parse_message_template(template, &v.fields)
+                let pattern = generate_pattern(enum_name, v);
+                let message = parse_message_template(template, &v.fields);
+                quote! { #pattern => #message }
             } else {
                 let should_use_display = v.use_display.unwrap_or(use_display);
+                let pattern = generate_pattern_ignore_fields(enum_name, &v.ident, &v.fields);
                 if should_use_display {
-                    quote! { ::std::string::ToString::to_string(self) }
+                    quote! { #pattern => ::std::string::ToString::to_string(self) }
                 } else {
                     let default_msg = format!("{}", v.ident);
-                    quote! { #default_msg.to_string() }
+                    quote! { #pattern => #default_msg.to_string() }
                 }
             };
 
-            quote! {
-                #pattern => #message_expr
-            }
+            message_expr
         })
         .collect()
 }
@@ -302,7 +301,7 @@ fn generate_metadata_arms(
     variants
         .iter()
         .map(|v| {
-            let pattern = generate_pattern(enum_name, v);
+            let pattern = generate_pattern_for_metadata(enum_name, v);
 
             let metadata_fields: Vec<_> = v
                 .fields
@@ -355,6 +354,74 @@ fn generate_pattern(enum_name: &Ident, variant: &StatusVariant) -> proc_macro2::
                 })
                 .collect();
             quote! { #enum_name::#variant_name(#(#bindings),*) }
+        }
+    }
+}
+
+fn generate_pattern_ignore_fields(
+    enum_name: &Ident,
+    variant_name: &Ident,
+    fields: &ast::Fields<StatusField>,
+) -> proc_macro2::TokenStream {
+    match fields.style {
+        ast::Style::Unit => {
+            quote! { #enum_name::#variant_name }
+        }
+        ast::Style::Struct => {
+            quote! { #enum_name::#variant_name { .. } }
+        }
+        ast::Style::Tuple => {
+            quote! { #enum_name::#variant_name(..) }
+        }
+    }
+}
+
+fn generate_pattern_for_metadata(
+    enum_name: &Ident,
+    variant: &StatusVariant,
+) -> proc_macro2::TokenStream {
+    let variant_name = &variant.ident;
+
+    match &variant.fields.style {
+        ast::Style::Unit => {
+            quote! { #enum_name::#variant_name }
+        }
+        ast::Style::Struct => {
+            let metadata_fields: Vec<_> = variant
+                .fields
+                .iter()
+                .filter(|f| f.metadata)
+                .filter_map(|f| f.ident.as_ref())
+                .collect();
+
+            if metadata_fields.is_empty() {
+                quote! { #enum_name::#variant_name { .. } }
+            } else {
+                quote! { #enum_name::#variant_name { #(#metadata_fields),*, .. } }
+            }
+        }
+        ast::Style::Tuple => {
+            let has_metadata = variant.fields.iter().any(|f| f.metadata);
+
+            if !has_metadata {
+                quote! { #enum_name::#variant_name(..) }
+            } else {
+                let bindings: Vec<_> = variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| {
+                        let binding =
+                            Ident::new(&format!("_{}", i), proc_macro2::Span::call_site());
+                        if f.metadata {
+                            quote! { #binding }
+                        } else {
+                            quote! { _ }
+                        }
+                    })
+                    .collect();
+                quote! { #enum_name::#variant_name(#(#bindings),*) }
+            }
         }
     }
 }

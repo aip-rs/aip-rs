@@ -315,7 +315,7 @@ fn test_into_status_conversion() {
     assert_eq!(status.status, Code::NotFound);
     assert_eq!(status.message, "User not found");
 
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.reason, "USER_NOT_FOUND");
     assert_eq!(error_info.domain, "users.myapp.com");
     assert_eq!(
@@ -333,7 +333,7 @@ fn test_status_from_conversion() {
     assert_eq!(status.status, Code::Internal);
     assert_eq!(status.message, "InternalError");
 
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.reason, "INTERNAL_ERROR");
     assert_eq!(error_info.domain, "test.example.com");
 }
@@ -591,7 +591,7 @@ fn test_realistic_api_errors() {
     let status: Status = err.into();
     assert_eq!(status.code, 401);
     assert_eq!(status.status, Code::Unauthenticated);
-    let info = status.details.error_info.unwrap();
+    let info = status.details.error_info;
     assert_eq!(info.metadata.get("token_type"), Some(&"Bearer".to_string()));
 
     // Validation error
@@ -602,7 +602,7 @@ fn test_realistic_api_errors() {
     let status: Status = err.into();
     assert_eq!(status.code, 400);
     assert_eq!(status.status, Code::InvalidArgument);
-    let info = status.details.error_info.unwrap();
+    let info = status.details.error_info;
     assert_eq!(info.metadata.get("field"), Some(&"email".to_string()));
     assert_eq!(
         info.metadata.get("constraint"),
@@ -617,7 +617,7 @@ fn test_realistic_api_errors() {
     let status: Status = err.into();
     assert_eq!(status.code, 404);
     assert_eq!(status.status, Code::NotFound);
-    let info = status.details.error_info.unwrap();
+    let info = status.details.error_info;
     assert_eq!(
         info.metadata.get("resource_type"),
         Some(&"User".to_string())
@@ -632,7 +632,7 @@ fn test_realistic_api_errors() {
     let status: Status = err.into();
     assert_eq!(status.code, 429);
     assert_eq!(status.status, Code::ResourceExhausted);
-    let info = status.details.error_info.unwrap();
+    let info = status.details.error_info;
     assert_eq!(
         info.metadata.get("retry_after_seconds"),
         Some(&"30".to_string())
@@ -759,7 +759,7 @@ mod into_response_tests {
         assert_eq!(status.status, Code::InvalidArgument);
         assert_eq!(status.message, "Validation failed");
 
-        let error_info = status.details.error_info.as_ref().unwrap();
+        let error_info = &status.details.error_info;
         assert_eq!(error_info.reason, "VALIDATION_ERROR");
         assert_eq!(error_info.domain, "api.response.com");
         assert_eq!(error_info.metadata.get("field"), Some(&"email".to_string()));
@@ -824,7 +824,7 @@ mod into_response_tests {
 
         // Verify the status conversion preserves custom keys
         let status: Status = err.clone().into();
-        let error_info = status.details.error_info.as_ref().unwrap();
+        let error_info = &status.details.error_info;
         assert_eq!(
             error_info.metadata.get("retry_after_seconds"),
             Some(&"120".to_string())
@@ -942,7 +942,7 @@ mod into_response_tests {
         for (err, expected_status) in test_cases {
             // Convert to Status to verify all data is preserved
             let status: Status = err.clone().into();
-            assert!(status.details.error_info.is_some());
+            assert!(!status.details.error_info.reason.is_empty());
 
             // Convert to Response with correct HTTP status
             let response = err.into_response();
@@ -1033,7 +1033,7 @@ fn test_function_domain_in_status() {
 
     assert_eq!(status.code, 404);
     assert_eq!(status.status, Code::NotFound);
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.domain, "function.domain.com");
 }
 
@@ -1070,7 +1070,7 @@ fn test_dynamic_domain_in_status() {
     };
     let status: Status = err.into();
 
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.domain, "test.domain.com");
     assert_eq!(error_info.metadata.get("reason"), Some(&"validation failed".to_string()));
 }
@@ -1116,7 +1116,7 @@ fn test_function_domain_with_into_response_and_metadata() {
 
     // Verify Status conversion preserves domain
     let status: Status = err.clone().into();
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.domain, "function.domain.com");
     assert_eq!(error_info.metadata.get("token_type"), Some(&"Bearer".to_string()));
 
@@ -1145,7 +1145,7 @@ fn test_module_scoped_domain_function() {
     assert_eq!(ModuleDomainError::InternalError.domain(), "module.scoped.domain.com");
 
     let status: Status = ModuleDomainError::InternalError.into();
-    let error_info = status.details.error_info.as_ref().unwrap();
+    let error_info = &status.details.error_info;
     assert_eq!(error_info.domain, "module.scoped.domain.com");
 }
 
@@ -1172,8 +1172,8 @@ fn test_string_vs_function_domain_equivalence() {
     let string_status: Status = string_err.into();
     let function_status: Status = function_err.into();
 
-    assert_eq!(string_status.details.error_info.as_ref().unwrap().domain, "static.string.com");
-    assert_eq!(function_status.details.error_info.as_ref().unwrap().domain, "function.domain.com");
+    assert_eq!(&string_status.details.error_info.domain, "static.string.com");
+    assert_eq!(&function_status.details.error_info.domain, "function.domain.com");
 }
 
 #[test]

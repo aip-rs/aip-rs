@@ -1,6 +1,6 @@
 [package]
 name = "aip-193"
-version = "0.2.0"
+version = "0.2.6"
 description = "A Rust implementation of Google AIP-193 Errors."
 edition = { workspace = true }
 authors = { workspace = true }
@@ -14,13 +14,15 @@ derive = ["aip-193-derive"]
 http = ["dep:http"]
 
 axum = ["dep:axum-core", "dep:serde_json", "http"]
+utoipa = ["dep:utoipa"]
 
 [dependencies]
-aip-193-derive = { version = "0.2.0", path = "../aip-193-derive", optional = true }
+aip-193-derive = { version = "0.2.2", path = "../aip-193-derive", optional = true }
 
 http = { version = "1.0", optional = true }
 
 axum-core = { version = "0.5", optional = true }
+utoipa = { version = "5", optional = true }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
